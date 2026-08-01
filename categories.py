@@ -1,40 +1,31 @@
 """
-Categorie commerciali utilizzate da Business Finder Italia.
+Business Finder Italia
+Definizione delle categorie da cercare.
 """
 
-CATEGORIES = {
+CATEGORIES = [
 
-    # Ristorazione
-    "restaurant": "Ristoranti",
-    "cafe": "Bar",
+    {"label": "Ristoranti", "key": "amenity", "value": "restaurant"},
+    {"label": "Bar", "key": "amenity", "value": "cafe"},
+    {"label": "Hotel", "key": "tourism", "value": "hotel"},
+    {"label": "Supermercati", "key": "shop", "value": "supermarket"},
+    {"label": "Ferramenta", "key": "shop", "value": "hardware"},
+    {"label": "Fiorai", "key": "shop", "value": "florist"},
+    {"label": "Mobilifici", "key": "shop", "value": "furniture"},
+    {"label": "Negozi di elettronica", "key": "shop", "value": "electronics"},
 
-    # Ricettività
-    "hotel": "Hotel",
+    {"label": "Parrucchieri", "key": "shop", "value": "hairdresser"},
+    {"label": "Centri estetici", "key": "shop", "value": "beauty"},
 
-    # Commercio
-    "supermarket": "Supermercati",
-    "hardware": "Ferramenta",
-    "florist": "Fiorai",
-    "furniture": "Mobilifici",
-    "electronics": "Negozi di elettronica",
+    {"label": "Autofficine", "key": "shop", "value": "car_repair"},
+    {"label": "Gommisti", "key": "shop", "value": "tyres"},
 
-    # Servizi
-    "hairdresser": "Parrucchieri",
-    "beauty": "Centri estetici",
-    "car_repair": "Autofficine",
-    "tyres": "Gommisti",
+    {"label": "Idraulici", "key": "craft", "value": "plumber"},
+    {"label": "Elettricisti", "key": "craft", "value": "electrician"},
+    {"label": "Imprese edili", "key": "craft", "value": "builder"},
 
-    # Artigiani
-    "craft=plumber": "Idraulici",
-    "craft=electrician": "Elettricisti",
-    "craft=builder": "Imprese edili",
+    {"label": "Imprese di pulizia", "key": "office", "value": "cleaning"},
+    {"label": "Trasporti e logistica", "key": "office", "value": "logistics"},
+    {"label": "Industrie manifatturiere", "key": "landuse", "value": "industrial"}
 
-    # Pulizie
-    "shop=cleaning": "Imprese di pulizia",
-
-    # Trasporti
-    "office=logistics": "Trasporti e logistica",
-
-    # Industria
-    "landuse=industrial": "Industrie manifatturiere"
-}
+]
