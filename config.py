@@ -1,39 +1,15 @@
 """
-Business Finder Italia
-Configurazione generale.
+Configurazione Business Finder Italia
 """
-
-# =========================
-# AREA DI RICERCA
-# =========================
 
 LOCATION = "Milano"
 SEARCH_MODE = "provincia"
 
-# =========================
-# OUTPUT
-# =========================
-
-OUTPUT_FOLDER = "output"
-
-OUTPUT_EXCEL = True
-OUTPUT_CSV = True
-OUTPUT_JSON = True
-
-# =========================
-# RETE
-# =========================
-
-REQUEST_TIMEOUT = 180
-RETRY = 3
-PAUSE_SECONDS = 5
-
-# =========================
-# SERVER OVERPASS
-# =========================
-
 OVERPASS_SERVERS = [
     "https://overpass-api.de/api/interpreter",
-    "https://overpass.kumi.systems/api/interpreter",
-    "https://lz4.overpass-api.de/api/interpreter",
+    "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
 ]
+
+REQUEST_TIMEOUT = 180
+RETRY = 4
+PAUSE_SECONDS = 6
