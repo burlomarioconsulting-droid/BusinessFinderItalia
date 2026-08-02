@@ -14,7 +14,7 @@ from config import OVERPASS_SERVERS, REQUEST_TIMEOUT, RETRY
 
 
 class OverpassClient:
-    """Gestisce le ricerche delle attività tramite Overpass API."""
+    """Gestisce le ricerche tramite i server Overpass."""
 
     ADMIN_LEVELS = {
         "comune": "8",
@@ -26,8 +26,8 @@ class OverpassClient:
         self.servers = OVERPASS_SERVERS
 
     @staticmethod
-    def _escape_value(value: str) -> str:
-        """Protegge virgolette e caratteri speciali nella query."""
+    def _escape(value: str) -> str:
+        """Protegge i caratteri speciali usati nella query."""
         return value.replace("\\", "\\\\").replace('"', '\\"')
 
     def build_query(
@@ -37,28 +37,25 @@ class OverpassClient:
         key: str,
         value: str,
     ) -> str:
-        """
-        Costruisce la query per comune, provincia o regione.
-
-        Esempi:
-        - LOCATION = "Milano", SEARCH_MODE = "comune"
-        - LOCATION = "Milano", SEARCH_MODE = "provincia"
-        - LOCATION = "Lombardia", SEARCH_MODE = "regione"
-        """
+        """Costruisce la query per comune, provincia o regione."""
 
         mode = search_mode.strip().lower()
 
         if mode not in self.ADMIN_LEVELS:
             raise ValueError(
-                "SEARCH_MODE non valido. Usa: "
-                "'comune', 'provincia' oppure 'regione'."
+                "SEARCH_MODE non valido. "
+                "Usa 'comune', 'provincia' oppure 'regione'."
             )
 
         admin_level = self.ADMIN_LEVELS[mode]
 
-        safe_location = self._escape_value(location.strip())
-        safe_key = self._escape_value(key.strip())
-        safe_value = self._escape_value(value.strip())
+        safe_location = self._escape(location.strip())
+        safe_key = self._escape(key.strip())
+        safe_value = self._escape(value.strip())
+
+        # La ricerca con espressione regolare permette di trovare anche
+        # denominazioni come "Città metropolitana di Milano".
+        area_pattern = f".*{safe_location}.*"
 
         return f"""
 [out:json][timeout:{REQUEST_TIMEOUT}];
@@ -66,7 +63,7 @@ class OverpassClient:
 relation
   ["boundary"="administrative"]
   ["admin_level"="{admin_level}"]
-  ["name"="{safe_location}"];
+  ["name"~"{area_pattern}", i];
 
 map_to_area -> .searchArea;
 
@@ -86,7 +83,7 @@ out center tags;
         key: str,
         value: str,
     ) -> list[dict[str, Any]]:
-        """Esegue una ricerca e restituisce gli elementi trovati."""
+        """Esegue la richiesta e restituisce gli elementi trovati."""
 
         query = self.build_query(
             location=location,
@@ -108,7 +105,7 @@ out center tags;
                         headers={
                             "User-Agent": (
                                 "BusinessFinderItalia/2.0 "
-                                "(OpenStreetMap data search)"
+                                "(OpenStreetMap business search)"
                             )
                         },
                         timeout=REQUEST_TIMEOUT,
@@ -117,8 +114,8 @@ out center tags;
                     if response.status_code == 429:
                         wait_seconds = attempt * 10
                         print(
-                            f"  Server occupato: attendo "
-                            f"{wait_seconds} secondi..."
+                            f"  Troppe richieste. "
+                            f"Attendo {wait_seconds} secondi..."
                         )
                         time.sleep(wait_seconds)
                         continue
@@ -126,8 +123,8 @@ out center tags;
                     if response.status_code in (502, 503, 504):
                         wait_seconds = attempt * 5
                         print(
-                            f"  Server temporaneamente non disponibile: "
-                            f"attendo {wait_seconds} secondi..."
+                            f"  Server temporaneamente occupato. "
+                            f"Attendo {wait_seconds} secondi..."
                         )
                         time.sleep(wait_seconds)
                         continue
@@ -155,19 +152,6 @@ out center tags;
                     time.sleep(attempt * 3)
 
         raise RuntimeError(
-            f"Nessun server Overpass disponibile. Ultimo errore: {last_error}"
-        ) },
-                        timeout=REQUEST_TIMEOUT
-                    )
-
-                    response.raise_for_status()
-
-                    data = response.json()
-
-                    return data.get("elements", [])
-
-                except Exception as e:
-                    last_error = e
-                    time.sleep(3)
-
-        raise last_error
+            "Nessun server Overpass disponibile. "
+            f"Ultimo errore: {last_error}"
+        )
