@@ -1,24 +1,36 @@
 """
 Business Finder Italia
-Programma principale
+Programma principale.
 """
 
-from config import LOCATION, SEARCH_MODE
+import time
+
+from config import LOCATION, SEARCH_MODE, PAUSE_SECONDS
 from categories import CATEGORIES
 from osm_client import OverpassClient
 from parser import parse_elements
 from exporter import export_results
 
 
+def element_identifier(element):
+    """
+    Crea un identificativo per evitare duplicati provenienti
+    da più query della stessa categoria.
+    """
+    return (
+        element.get("type", ""),
+        element.get("id", ""),
+    )
+
+
 def main():
 
     client = OverpassClient()
-
     all_records = []
 
-    print("=" * 50)
+    print("=" * 55)
     print("BUSINESS FINDER ITALIA")
-    print("=" * 50)
+    print("=" * 55)
     print(f"Località: {LOCATION}")
     print(f"Modalità: {SEARCH_MODE}")
     print()
@@ -26,36 +38,53 @@ def main():
     for category in CATEGORIES:
 
         label = category["label"]
-        key = category["key"]
-        value = category["value"]
+        queries = category["queries"]
 
         print(f"Cerco {label}...")
 
-        try:
+        category_elements = []
+        seen_elements = set()
 
-            elements = client.search(
-                LOCATION,
-                SEARCH_MODE,
-                key,
-                value
-            )
+        for query_data in queries:
 
-            records = parse_elements(elements, label)
+            key = query_data["key"]
+            value = query_data["value"]
 
-            all_records.extend(records)
+            try:
+                elements = client.search(
+                    LOCATION,
+                    SEARCH_MODE,
+                    key,
+                    value,
+                )
 
-            print(f"  Trovati: {len(records)}")
+                for element in elements:
+                    identifier = element_identifier(element)
 
-        except Exception as e:
+                    if identifier not in seen_elements:
+                        seen_elements.add(identifier)
+                        category_elements.append(element)
 
-            print(f"  Errore: {e}")
+            except Exception as error:
+                print(
+                    f"  Query {key}={value} non completata: "
+                    f"{error}"
+                )
+
+            # Riduce il rischio di errori 429.
+            time.sleep(PAUSE_SECONDS)
+
+        records = parse_elements(category_elements, label)
+        all_records.extend(records)
+
+        print(f"  Trovati: {len(records)}")
 
     print()
     print("Esporto i risultati...")
 
     export_results(
         all_records,
-        filename=f"BusinessFinder_{LOCATION}_{SEARCH_MODE}"
+        filename=f"BusinessFinder_{LOCATION}_{SEARCH_MODE}",
     )
 
     print("Operazione completata.")
