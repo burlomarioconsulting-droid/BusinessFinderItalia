@@ -26,7 +26,7 @@ CATEGORIES = [
     {"label": "Gommisti", "key": "shop", "value": "tyres"},
     {"label": "Carrozzerie", "key": "craft", "value": "car_painter"},
 
-    # Artigiani e impiantistica
+    # Artigiani e imprese
     {"label": "Idraulici", "key": "craft", "value": "plumber"},
     {"label": "Elettricisti", "key": "craft", "value": "electrician"},
     {"label": "Imprese edili", "key": "craft", "value": "builder"},
