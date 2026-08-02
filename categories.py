@@ -1,42 +1,144 @@
 """
 Business Finder Italia
-Categorie commerciali da ricercare.
+Categorie commerciali e relativi tag OpenStreetMap.
 """
 
 CATEGORIES = [
-
-    # Ristorazione e ricettività
-    {"label": "Ristoranti", "key": "amenity", "value": "restaurant"},
-    {"label": "Bar e caffè", "key": "amenity", "value": "cafe"},
-    {"label": "Hotel", "key": "tourism", "value": "hotel"},
-    {"label": "Panifici", "key": "shop", "value": "bakery"},
-
-    # Commercio
-    {"label": "Ferramenta", "key": "shop", "value": "hardware"},
-    {"label": "Mobilifici", "key": "shop", "value": "furniture"},
-    {"label": "Negozi di elettronica", "key": "shop", "value": "electronics"},
-
-    # Cura personale
-    {"label": "Parrucchieri", "key": "shop", "value": "hairdresser"},
-    {"label": "Centri estetici", "key": "shop", "value": "beauty"},
-
-    # Settore automobilistico
-    {"label": "Autofficine", "key": "shop", "value": "car_repair"},
-    {"label": "Autolavaggi", "key": "amenity", "value": "car_wash"},
-    {"label": "Gommisti", "key": "shop", "value": "tyres"},
-    {"label": "Carrozzerie", "key": "craft", "value": "car_painter"},
-
-    # Artigiani e imprese
-    {"label": "Idraulici", "key": "craft", "value": "plumber"},
-    {"label": "Elettricisti", "key": "craft", "value": "electrician"},
-    {"label": "Imprese edili", "key": "craft", "value": "builder"},
-    {"label": "Imprese di pulizia", "key": "craft", "value": "cleaning"},
-    {"label": "Imprese di decorazione", "key": "craft", "value": "interior_decorator"},
-    {"label": "Imbianchini", "key": "craft", "value": "painter"},
-
-    # Trasporti
-    {"label": "Trasporti e logistica", "key": "office", "value": "logistics"},
-
-    # Industria
-    {"label": "Industrie manifatturiere", "key": "landuse", "value": "industrial"},
+    {
+        "label": "Ristoranti",
+        "queries": [
+            {"key": "amenity", "value": "restaurant"},
+        ],
+    },
+    {
+        "label": "Bar e caffè",
+        "queries": [
+            {"key": "amenity", "value": "cafe"},
+            {"key": "amenity", "value": "bar"},
+        ],
+    },
+    {
+        "label": "Hotel",
+        "queries": [
+            {"key": "tourism", "value": "hotel"},
+        ],
+    },
+    {
+        "label": "Panifici",
+        "queries": [
+            {"key": "shop", "value": "bakery"},
+        ],
+    },
+    {
+        "label": "Ferramenta",
+        "queries": [
+            {"key": "shop", "value": "hardware"},
+            {"key": "shop", "value": "doityourself"},
+        ],
+    },
+    {
+        "label": "Mobilifici",
+        "queries": [
+            {"key": "shop", "value": "furniture"},
+        ],
+    },
+    {
+        "label": "Negozi di elettronica",
+        "queries": [
+            {"key": "shop", "value": "electronics"},
+            {"key": "shop", "value": "computer"},
+        ],
+    },
+    {
+        "label": "Parrucchieri",
+        "queries": [
+            {"key": "shop", "value": "hairdresser"},
+        ],
+    },
+    {
+        "label": "Centri estetici",
+        "queries": [
+            {"key": "shop", "value": "beauty"},
+        ],
+    },
+    {
+        "label": "Autofficine",
+        "queries": [
+            {"key": "shop", "value": "car_repair"},
+        ],
+    },
+    {
+        "label": "Autolavaggi",
+        "queries": [
+            {"key": "amenity", "value": "car_wash"},
+        ],
+    },
+    {
+        "label": "Gommisti",
+        "queries": [
+            {"key": "shop", "value": "tyres"},
+        ],
+    },
+    {
+        "label": "Carrozzerie",
+        "queries": [
+            {"key": "craft", "value": "car_painter"},
+            {"key": "service:vehicle:body_repair", "value": "yes"},
+            {"key": "service:vehicle:painting", "value": "yes"},
+        ],
+    },
+    {
+        "label": "Idraulici",
+        "queries": [
+            {"key": "craft", "value": "plumber"},
+        ],
+    },
+    {
+        "label": "Elettricisti",
+        "queries": [
+            {"key": "craft", "value": "electrician"},
+        ],
+    },
+    {
+        "label": "Imprese edili",
+        "queries": [
+            {"key": "craft", "value": "builder"},
+            {"key": "office", "value": "construction_company"},
+        ],
+    },
+    {
+        "label": "Imprese di pulizia",
+        "queries": [
+            {"key": "craft", "value": "cleaning"},
+            {"key": "office", "value": "cleaning"},
+        ],
+    },
+    {
+        "label": "Imprese di decorazione",
+        "queries": [
+            {"key": "craft", "value": "interior_decorator"},
+            {"key": "office", "value": "interior_design"},
+        ],
+    },
+    {
+        "label": "Imbianchini",
+        "queries": [
+            {"key": "craft", "value": "painter"},
+        ],
+    },
+    {
+        "label": "Trasporti e logistica",
+        "queries": [
+            {"key": "office", "value": "logistics"},
+            {"key": "office", "value": "transport"},
+        ],
+    },
+    {
+        "label": "Industrie manifatturiere",
+        "queries": [
+            {"key": "man_made", "value": "works"},
+            {"key": "industrial", "value": "factory"},
+            {"key": "building", "value": "industrial"},
+        ],
+    },
 ]
