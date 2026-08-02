@@ -1,6 +1,6 @@
 """
 Business Finder Italia
-Interfaccia web realizzata con Streamlit.
+Interfaccia web Streamlit.
 """
 
 from __future__ import annotations
@@ -88,12 +88,11 @@ st.markdown(
 # FUNZIONI DI SUPPORTO
 # ==========================================================
 
-def element_identifier(element: dict[str, Any]) -> tuple[Any, Any]:
+def element_identifier(
+    element: dict[str, Any],
+) -> tuple[Any, Any]:
     """
-    Crea un identificativo univoco per un elemento OSM.
-
-    Serve per evitare duplicati quando una categoria utilizza
-    più query OpenStreetMap.
+    Crea un identificativo univoco per ogni elemento OSM.
     """
 
     return (
@@ -102,7 +101,9 @@ def element_identifier(element: dict[str, Any]) -> tuple[Any, Any]:
     )
 
 
-def clean_text_series(series: pd.Series) -> pd.Series:
+def clean_text_series(
+    series: pd.Series,
+) -> pd.Series:
     """
     Converte una colonna in testo pulito.
     """
@@ -115,9 +116,11 @@ def clean_text_series(series: pd.Series) -> pd.Series:
     )
 
 
-def prepare_dataframe(records: list[dict[str, Any]]) -> pd.DataFrame:
+def prepare_dataframe(
+    records: list[dict[str, Any]],
+) -> pd.DataFrame:
     """
-    Trasforma i record in una tabella ordinata e pulita.
+    Trasforma i risultati in una tabella pulita.
     """
 
     columns = [
@@ -139,24 +142,21 @@ def prepare_dataframe(records: list[dict[str, Any]]) -> pd.DataFrame:
 
     df = pd.DataFrame(records)
 
-    # Crea le colonne mancanti.
     for column in columns:
         if column not in df.columns:
             df[column] = ""
 
-    # Mantiene soltanto le colonne previste.
     df = df[columns].copy()
 
-    # Pulisce tutti i valori.
     for column in columns:
         df[column] = clean_text_series(df[column])
 
-    # Elimina le righe senza nome.
+    # Elimina righe senza nome.
     df = df[
         df["Nome attività"] != ""
     ].copy()
 
-    # Deduplicazione principale.
+    # Elimina i duplicati.
     df = df.drop_duplicates(
         subset=[
             "Nome attività",
@@ -166,7 +166,7 @@ def prepare_dataframe(records: list[dict[str, Any]]) -> pd.DataFrame:
         keep="first",
     )
 
-    # Ordinamento.
+    # Ordina per settore e nome.
     df = df.sort_values(
         by=[
             "Settore",
@@ -178,9 +178,11 @@ def prepare_dataframe(records: list[dict[str, Any]]) -> pd.DataFrame:
     return df.reset_index(drop=True)
 
 
-def dataframe_to_excel(df: pd.DataFrame) -> bytes:
+def dataframe_to_excel(
+    df: pd.DataFrame,
+) -> bytes:
     """
-    Crea un file Excel formattato direttamente in memoria.
+    Crea un file Excel formattato in memoria.
     """
 
     output = io.BytesIO()
@@ -198,16 +200,12 @@ def dataframe_to_excel(df: pd.DataFrame) -> bytes:
 
         worksheet = writer.sheets["Attività"]
 
-        # Blocca la prima riga.
         worksheet.freeze_panes = "A2"
-
-        # Attiva i filtri.
         worksheet.auto_filter.ref = worksheet.dimensions
 
-        # Regola automaticamente la larghezza delle colonne.
         for column_cells in worksheet.columns:
 
-            max_length = 0
+            maximum_length = 0
             column_letter = column_cells[0].column_letter
 
             for cell in column_cells:
@@ -218,15 +216,15 @@ def dataframe_to_excel(df: pd.DataFrame) -> bytes:
                     else str(cell.value)
                 )
 
-                max_length = max(
-                    max_length,
+                maximum_length = max(
+                    maximum_length,
                     len(value),
                 )
 
             worksheet.column_dimensions[
                 column_letter
             ].width = min(
-                max_length + 2,
+                maximum_length + 2,
                 45,
             )
 
@@ -235,9 +233,11 @@ def dataframe_to_excel(df: pd.DataFrame) -> bytes:
     return output.getvalue()
 
 
-def safe_filename(value: str) -> str:
+def safe_filename(
+    value: str,
+) -> str:
     """
-    Trasforma una località in un nome file sicuro.
+    Rende il nome della località adatto a un file.
     """
 
     cleaned = (
@@ -252,7 +252,7 @@ def safe_filename(value: str) -> str:
 
 def get_category_labels() -> list[str]:
     """
-    Restituisce l'elenco delle categorie disponibili.
+    Restituisce i nomi delle categorie disponibili.
     """
 
     return [
@@ -261,17 +261,39 @@ def get_category_labels() -> list[str]:
     ]
 
 
+def filter_records_with_contacts(
+    df: pd.DataFrame,
+) -> pd.DataFrame:
+    """
+    Mantiene solo le aziende con almeno un contatto.
+    """
+
+    has_phone = (
+        clean_text_series(df["Telefono"]) != ""
+    )
+
+    has_email = (
+        clean_text_series(df["Email"]) != ""
+    )
+
+    has_website = (
+        clean_text_series(df["Sito web"]) != ""
+    )
+
+    return df[
+        has_phone
+        | has_email
+        | has_website
+    ].copy()
+
+
 def search_businesses(
     location: str,
     search_mode: str,
     selected_labels: list[str],
 ) -> tuple[pd.DataFrame, list[str]]:
     """
-    Cerca tutte le attività delle categorie selezionate.
-
-    Restituisce:
-    - DataFrame con i risultati;
-    - elenco degli avvisi registrati.
+    Cerca le attività delle categorie selezionate.
     """
 
     client = OverpassClient()
@@ -288,9 +310,7 @@ def search_businesses(
     total_categories = len(selected_categories)
 
     progress_bar = st.progress(0)
-
     status_box = st.empty()
-
     results_box = st.empty()
 
     for category_index, category in enumerate(
@@ -315,9 +335,13 @@ def search_businesses(
             value = query_data["value"]
 
             try:
+
+                # IMPORTANTE:
+                # osm_client.py usa il parametro "mode",
+                # non "search_mode".
                 elements = client.search(
                     location=location,
-                    search_mode=search_mode,
+                    mode=search_mode,
                     key=key,
                     value=value,
                 )
@@ -334,16 +358,14 @@ def search_businesses(
                     seen_elements.add(identifier)
                     category_elements.append(element)
 
-            except Exception:
-                warning_message = (
-                    f"{label}: una fonte non ha risposto "
-                    f"alla ricerca {key}={value}. "
-                    "La ricerca è proseguita con le altre fonti."
+            except Exception as error:
+
+                warnings.append(
+                    f"{label}: la query "
+                    f"{key}={value} non è stata completata. "
+                    f"Dettaglio: {error}"
                 )
 
-                warnings.append(warning_message)
-
-            # Pausa per non sovraccaricare i server pubblici.
             if PAUSE_SECONDS > 0:
                 time.sleep(PAUSE_SECONDS)
 
@@ -373,34 +395,8 @@ def search_businesses(
     )
 
 
-def filter_records_with_contacts(
-    df: pd.DataFrame,
-) -> pd.DataFrame:
-    """
-    Mantiene solo le attività con telefono, email o sito.
-    """
-
-    has_phone = (
-        clean_text_series(df["Telefono"]) != ""
-    )
-
-    has_email = (
-        clean_text_series(df["Email"]) != ""
-    )
-
-    has_website = (
-        clean_text_series(df["Sito web"]) != ""
-    )
-
-    return df[
-        has_phone
-        | has_email
-        | has_website
-    ].copy()
-
-
 # ==========================================================
-# INTESTAZIONE E LOGO
+# LOGO E INTESTAZIONE
 # ==========================================================
 
 logo_candidates = [
@@ -436,6 +432,7 @@ if logo_path is not None:
         st.title("Business Finder Italia")
 
 else:
+
     st.title("🔎 Business Finder Italia")
 
 st.markdown(
@@ -459,13 +456,11 @@ with st.sidebar:
 
     location = st.text_input(
         "Località",
-        value="Milano",
-        placeholder=(
-            "Esempio: Milano, Torino, Lombardia"
-        ),
+        value="Torino",
+        placeholder="Esempio: Torino, Milano, Lombardia",
         help=(
             "Scrivi il nome del comune, della provincia "
-            "o della regione da cercare."
+            "o della regione."
         ),
     )
 
@@ -495,26 +490,6 @@ with st.sidebar:
         default=category_labels,
         placeholder="Seleziona una o più categorie",
     )
-
-    selection_col1, selection_col2 = st.columns(2)
-
-    with selection_col1:
-        select_all = st.button(
-            "Tutte",
-            use_container_width=True,
-        )
-
-    with selection_col2:
-        clear_all = st.button(
-            "Nessuna",
-            use_container_width=True,
-        )
-
-    if select_all:
-        selected_labels = category_labels
-
-    if clear_all:
-        selected_labels = []
 
     st.divider()
 
@@ -558,7 +533,6 @@ if start_search:
 
     else:
 
-        # Elimina i risultati della ricerca precedente.
         st.session_state.pop(
             "results_df",
             None,
@@ -614,14 +588,14 @@ if "results_df" in st.session_state:
     )
 
     st.divider()
-
     st.subheader("Risultati")
 
     if df.empty:
 
         st.warning(
             "Nessuna attività trovata. "
-            "Prova a cambiare località, area o categorie."
+            "Controlla la località, la modalità scelta "
+            "oppure riprova selezionando una sola categoria."
         )
 
     else:
@@ -636,8 +610,7 @@ if "results_df" in st.session_state:
             (
                 clean_text_series(
                     df["Telefono"]
-                )
-                != ""
+                ) != ""
             ).sum()
         )
 
@@ -645,8 +618,7 @@ if "results_df" in st.session_state:
             (
                 clean_text_series(
                     df["Email"]
-                )
-                != ""
+                ) != ""
             ).sum()
         )
 
@@ -654,8 +626,7 @@ if "results_df" in st.session_state:
             (
                 clean_text_series(
                     df["Sito web"]
-                )
-                != ""
+                ) != ""
             ).sum()
         )
 
@@ -689,6 +660,7 @@ if "results_df" in st.session_state:
         displayed_df = df.copy()
 
         if filter_contact:
+
             displayed_df = (
                 filter_records_with_contacts(
                     displayed_df
@@ -706,8 +678,6 @@ if "results_df" in st.session_state:
             height=520,
         )
 
-        # Mostra un riepilogo degli avvisi,
-        # senza esporre lunghi errori tecnici.
         if search_warnings:
 
             with st.expander(
