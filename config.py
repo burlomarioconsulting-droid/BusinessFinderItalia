@@ -1,14 +1,14 @@
 """
 Business Finder Italia
-Configurazione generale
+Configurazione generale.
 """
 
 # =========================
 # AREA DI RICERCA
 # =========================
 
-LOCATION = "Lombardia"
-SEARCH_MODE = "regione"
+LOCATION = "Milano"
+SEARCH_MODE = "provincia"
 
 # =========================
 # OUTPUT
@@ -24,7 +24,7 @@ OUTPUT_JSON = True
 # RETE
 # =========================
 
-REQUEST_TIMEOUT = 120
+REQUEST_TIMEOUT = 180
 RETRY = 3
 PAUSE_SECONDS = 5
 
