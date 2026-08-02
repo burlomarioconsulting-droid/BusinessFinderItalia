@@ -1,6 +1,6 @@
 """
 Business Finder Italia
-Interfaccia web Streamlit.
+Interfaccia web realizzata con Streamlit.
 """
 
 from __future__ import annotations
@@ -8,36 +8,116 @@ from __future__ import annotations
 import io
 import json
 import time
+from pathlib import Path
+from typing import Any
 
 import pandas as pd
 import streamlit as st
 
 from categories import CATEGORIES
+from config import PAUSE_SECONDS
 from osm_client import OverpassClient
 from parser import parse_elements
 
 
+# ==========================================================
+# CONFIGURAZIONE PAGINA
+# ==========================================================
+
 st.set_page_config(
     page_title="Business Finder Italia",
-    page_icon="🏢",
+    page_icon="🔎",
     layout="wide",
+    initial_sidebar_state="expanded",
 )
 
 
-def element_identifier(element: dict) -> tuple:
+# ==========================================================
+# STILE GRAFICO
+# ==========================================================
+
+st.markdown(
     """
-    Identifica un elemento OpenStreetMap per evitare duplicati
-    provenienti da più query della stessa categoria.
+    <style>
+        .block-container {
+            padding-top: 1.5rem;
+            padding-bottom: 3rem;
+        }
+
+        [data-testid="stSidebar"] {
+            min-width: 310px;
+            max-width: 310px;
+        }
+
+        .business-subtitle {
+            font-size: 1.05rem;
+            color: #52606d;
+            margin-top: -0.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .small-note {
+            color: #6b7280;
+            font-size: 0.88rem;
+        }
+
+        div[data-testid="stMetric"] {
+            border: 1px solid #e5e7eb;
+            padding: 14px;
+            border-radius: 12px;
+            background-color: #ffffff;
+        }
+
+        div.stButton > button {
+            font-weight: 700;
+            border-radius: 9px;
+        }
+
+        div.stDownloadButton > button {
+            width: 100%;
+            border-radius: 9px;
+            font-weight: 700;
+        }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
+# ==========================================================
+# FUNZIONI DI SUPPORTO
+# ==========================================================
+
+def element_identifier(element: dict[str, Any]) -> tuple[Any, Any]:
     """
+    Crea un identificativo univoco per un elemento OSM.
+
+    Serve per evitare duplicati quando una categoria utilizza
+    più query OpenStreetMap.
+    """
+
     return (
         element.get("type", ""),
         element.get("id", ""),
     )
 
 
-def prepare_dataframe(records: list[dict]) -> pd.DataFrame:
+def clean_text_series(series: pd.Series) -> pd.Series:
     """
-    Trasforma i record in una tabella pulita.
+    Converte una colonna in testo pulito.
+    """
+
+    return (
+        series
+        .fillna("")
+        .astype(str)
+        .str.strip()
+    )
+
+
+def prepare_dataframe(records: list[dict[str, Any]]) -> pd.DataFrame:
+    """
+    Trasforma i record in una tabella ordinata e pulita.
     """
 
     columns = [
@@ -59,22 +139,24 @@ def prepare_dataframe(records: list[dict]) -> pd.DataFrame:
 
     df = pd.DataFrame(records)
 
-    # Aggiunge eventuali colonne mancanti.
+    # Crea le colonne mancanti.
     for column in columns:
         if column not in df.columns:
             df[column] = ""
 
-    # Mantiene l’ordine desiderato.
-    df = df[columns]
+    # Mantiene soltanto le colonne previste.
+    df = df[columns].copy()
 
-    # Rimuove le attività senza nome.
-    df["Nome attività"] = df["Nome attività"].fillna("").astype(str)
+    # Pulisce tutti i valori.
+    for column in columns:
+        df[column] = clean_text_series(df[column])
 
+    # Elimina le righe senza nome.
     df = df[
-        df["Nome attività"].str.strip() != ""
+        df["Nome attività"] != ""
     ].copy()
 
-    # Elimina i duplicati.
+    # Deduplicazione principale.
     df = df.drop_duplicates(
         subset=[
             "Nome attività",
@@ -84,9 +166,12 @@ def prepare_dataframe(records: list[dict]) -> pd.DataFrame:
         keep="first",
     )
 
-    # Ordina la tabella.
+    # Ordinamento.
     df = df.sort_values(
-        by=["Settore", "Nome attività"],
+        by=[
+            "Settore",
+            "Nome attività",
+        ],
         na_position="last",
     )
 
@@ -95,7 +180,7 @@ def prepare_dataframe(records: list[dict]) -> pd.DataFrame:
 
 def dataframe_to_excel(df: pd.DataFrame) -> bytes:
     """
-    Crea il file Excel in memoria.
+    Crea un file Excel formattato direttamente in memoria.
     """
 
     output = io.BytesIO()
@@ -113,10 +198,13 @@ def dataframe_to_excel(df: pd.DataFrame) -> bytes:
 
         worksheet = writer.sheets["Attività"]
 
+        # Blocca la prima riga.
         worksheet.freeze_panes = "A2"
+
+        # Attiva i filtri.
         worksheet.auto_filter.ref = worksheet.dimensions
 
-        # Adatta la larghezza delle colonne.
+        # Regola automaticamente la larghezza delle colonne.
         for column_cells in worksheet.columns:
 
             max_length = 0
@@ -124,10 +212,20 @@ def dataframe_to_excel(df: pd.DataFrame) -> bytes:
 
             for cell in column_cells:
 
-                value = "" if cell.value is None else str(cell.value)
-                max_length = max(max_length, len(value))
+                value = (
+                    ""
+                    if cell.value is None
+                    else str(cell.value)
+                )
 
-            worksheet.column_dimensions[column_letter].width = min(
+                max_length = max(
+                    max_length,
+                    len(value),
+                )
+
+            worksheet.column_dimensions[
+                column_letter
+            ].width = min(
                 max_length + 2,
                 45,
             )
@@ -137,17 +235,49 @@ def dataframe_to_excel(df: pd.DataFrame) -> bytes:
     return output.getvalue()
 
 
+def safe_filename(value: str) -> str:
+    """
+    Trasforma una località in un nome file sicuro.
+    """
+
+    cleaned = (
+        value.strip()
+        .replace(" ", "_")
+        .replace("/", "_")
+        .replace("\\", "_")
+    )
+
+    return cleaned or "Italia"
+
+
+def get_category_labels() -> list[str]:
+    """
+    Restituisce l'elenco delle categorie disponibili.
+    """
+
+    return [
+        category["label"]
+        for category in CATEGORIES
+    ]
+
+
 def search_businesses(
     location: str,
     search_mode: str,
     selected_labels: list[str],
-) -> pd.DataFrame:
+) -> tuple[pd.DataFrame, list[str]]:
     """
-    Esegue la ricerca per le categorie selezionate.
+    Cerca tutte le attività delle categorie selezionate.
+
+    Restituisce:
+    - DataFrame con i risultati;
+    - elenco degli avvisi registrati.
     """
 
     client = OverpassClient()
-    all_records = []
+
+    all_records: list[dict[str, Any]] = []
+    warnings: list[str] = []
 
     selected_categories = [
         category
@@ -155,11 +285,13 @@ def search_businesses(
         if category["label"] in selected_labels
     ]
 
+    total_categories = len(selected_categories)
+
     progress_bar = st.progress(0)
 
     status_box = st.empty()
 
-    total_categories = len(selected_categories)
+    results_box = st.empty()
 
     for category_index, category in enumerate(
         selected_categories,
@@ -167,15 +299,15 @@ def search_businesses(
     ):
 
         label = category["label"]
-        queries = category["queries"]
+        queries = category.get("queries", [])
 
         status_box.info(
             f"Ricerca in corso: {label} "
             f"({category_index}/{total_categories})"
         )
 
-        category_elements = []
-        seen_elements = set()
+        category_elements: list[dict[str, Any]] = []
+        seen_elements: set[tuple[Any, Any]] = set()
 
         for query_data in queries:
 
@@ -192,46 +324,134 @@ def search_businesses(
 
                 for element in elements:
 
-                    identifier = element_identifier(element)
+                    identifier = element_identifier(
+                        element
+                    )
 
-                    if identifier not in seen_elements:
+                    if identifier in seen_elements:
+                        continue
 
-                        seen_elements.add(identifier)
-                        category_elements.append(element)
+                    seen_elements.add(identifier)
+                    category_elements.append(element)
 
-            except Exception as error:
-
-                st.warning(
-                    f"{label}: la query "
-                    f"{key}={value} non è stata completata.\n\n"
-                    f"Dettaglio: {error}"
+            except Exception:
+                warning_message = (
+                    f"{label}: una fonte non ha risposto "
+                    f"alla ricerca {key}={value}. "
+                    "La ricerca è proseguita con le altre fonti."
                 )
 
-            # Piccola pausa per non sovraccaricare Overpass.
-            time.sleep(2)
+                warnings.append(warning_message)
 
-        records = parse_elements(
+            # Pausa per non sovraccaricare i server pubblici.
+            if PAUSE_SECONDS > 0:
+                time.sleep(PAUSE_SECONDS)
+
+        category_records = parse_elements(
             category_elements,
             label,
         )
 
-        all_records.extend(records)
+        all_records.extend(category_records)
+
+        results_box.write(
+            f"**{label}:** "
+            f"{len(category_records)} attività trovate"
+        )
 
         progress_bar.progress(
             category_index / total_categories
         )
 
-    status_box.success("Ricerca completata.")
+    status_box.success(
+        "Ricerca completata."
+    )
 
-    return prepare_dataframe(all_records)
+    return (
+        prepare_dataframe(all_records),
+        warnings,
+    )
 
 
-st.title("🏢 Business Finder Italia")
+def filter_records_with_contacts(
+    df: pd.DataFrame,
+) -> pd.DataFrame:
+    """
+    Mantiene solo le attività con telefono, email o sito.
+    """
 
-st.write(
-    "Cerca attività commerciali per comune, provincia "
-    "o regione ed esporta i risultati."
+    has_phone = (
+        clean_text_series(df["Telefono"]) != ""
+    )
+
+    has_email = (
+        clean_text_series(df["Email"]) != ""
+    )
+
+    has_website = (
+        clean_text_series(df["Sito web"]) != ""
+    )
+
+    return df[
+        has_phone
+        | has_email
+        | has_website
+    ].copy()
+
+
+# ==========================================================
+# INTESTAZIONE E LOGO
+# ==========================================================
+
+logo_candidates = [
+    Path("logo.png"),
+    Path("assets/logo.png"),
+    Path("logo.jpg"),
+    Path("assets/logo.jpg"),
+]
+
+logo_path = next(
+    (
+        path
+        for path in logo_candidates
+        if path.exists()
+    ),
+    None,
 )
+
+if logo_path is not None:
+
+    logo_column, title_column = st.columns(
+        [1, 4],
+        vertical_alignment="center",
+    )
+
+    with logo_column:
+        st.image(
+            str(logo_path),
+            use_container_width=True,
+        )
+
+    with title_column:
+        st.title("Business Finder Italia")
+
+else:
+    st.title("🔎 Business Finder Italia")
+
+st.markdown(
+    """
+    <div class="business-subtitle">
+        Cerca attività commerciali per comune, provincia
+        o regione ed esporta i risultati.
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+
+# ==========================================================
+# BARRA LATERALE
+# ==========================================================
 
 with st.sidebar:
 
@@ -240,7 +460,13 @@ with st.sidebar:
     location = st.text_input(
         "Località",
         value="Milano",
-        placeholder="Esempio: Milano",
+        placeholder=(
+            "Esempio: Milano, Torino, Lombardia"
+        ),
+        help=(
+            "Scrivi il nome del comune, della provincia "
+            "o della regione da cercare."
+        ),
     )
 
     search_mode = st.radio(
@@ -250,23 +476,47 @@ with st.sidebar:
             "provincia",
             "regione",
         ],
-        format_func=lambda value: {
+        format_func=lambda mode: {
             "comune": "Comune",
-            "provincia": "Provincia / Città metropolitana",
+            "provincia": (
+                "Provincia / Città metropolitana"
+            ),
             "regione": "Regione",
-        }[value],
+        }[mode],
     )
 
-    category_labels = [
-        category["label"]
-        for category in CATEGORIES
-    ]
+    st.divider()
+
+    category_labels = get_category_labels()
 
     selected_labels = st.multiselect(
         "Categorie",
         options=category_labels,
         default=category_labels,
+        placeholder="Seleziona una o più categorie",
     )
+
+    selection_col1, selection_col2 = st.columns(2)
+
+    with selection_col1:
+        select_all = st.button(
+            "Tutte",
+            use_container_width=True,
+        )
+
+    with selection_col2:
+        clear_all = st.button(
+            "Nessuna",
+            use_container_width=True,
+        )
+
+    if select_all:
+        selected_labels = category_labels
+
+    if clear_all:
+        selected_labels = []
+
+    st.divider()
 
     start_search = st.button(
         "🔍 Avvia ricerca",
@@ -274,167 +524,272 @@ with st.sidebar:
         use_container_width=True,
     )
 
+    st.markdown(
+        """
+        <div class="small-note">
+            I risultati dipendono dai dati disponibili
+            su OpenStreetMap e dalla disponibilità
+            dei server pubblici Overpass.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+# ==========================================================
+# AVVIO RICERCA
+# ==========================================================
 
 if start_search:
 
-    if not location.strip():
+    clean_location = location.strip()
 
-        st.error("Inserisci una località.")
+    if not clean_location:
+
+        st.error(
+            "Inserisci una località."
+        )
 
     elif not selected_labels:
 
-        st.error("Seleziona almeno una categoria.")
+        st.error(
+            "Seleziona almeno una categoria."
+        )
 
     else:
+
+        # Elimina i risultati della ricerca precedente.
+        st.session_state.pop(
+            "results_df",
+            None,
+        )
+
+        st.session_state.pop(
+            "search_warnings",
+            None,
+        )
 
         with st.spinner(
             "Ricerca delle attività in corso..."
         ):
 
-            results_df = search_businesses(
-                location=location.strip(),
-                search_mode=search_mode,
-                selected_labels=selected_labels,
+            results_df, search_warnings = (
+                search_businesses(
+                    location=clean_location,
+                    search_mode=search_mode,
+                    selected_labels=selected_labels,
+                )
             )
 
         st.session_state["results_df"] = results_df
-        st.session_state["location"] = location.strip()
+        st.session_state["search_warnings"] = (
+            search_warnings
+        )
+
+        st.session_state["location"] = clean_location
         st.session_state["search_mode"] = search_mode
 
+
+# ==========================================================
+# RISULTATI
+# ==========================================================
 
 if "results_df" in st.session_state:
 
     df = st.session_state["results_df"]
 
-    current_location = st.session_state["location"]
-    current_mode = st.session_state["search_mode"]
+    current_location = st.session_state.get(
+        "location",
+        "Italia",
+    )
+
+    current_mode = st.session_state.get(
+        "search_mode",
+        "comune",
+    )
+
+    search_warnings = st.session_state.get(
+        "search_warnings",
+        [],
+    )
+
+    st.divider()
 
     st.subheader("Risultati")
 
-    col1, col2, col3 = st.columns(3)
+    if df.empty:
 
-    col1.metric(
-        "Attività trovate",
-        len(df),
-    )
-
-    col2.metric(
-        "Con telefono",
-        int(
-            df["Telefono"]
-            .fillna("")
-            .astype(str)
-            .str.strip()
-            .ne("")
-            .sum()
-        ),
-    )
-
-    col3.metric(
-        "Con sito web",
-        int(
-            df["Sito web"]
-            .fillna("")
-            .astype(str)
-            .str.strip()
-            .ne("")
-            .sum()
-        ),
-    )
-
-    filter_contact = st.checkbox(
-        "Mostra solo attività con almeno un contatto",
-        value=False,
-    )
-
-    displayed_df = df.copy()
-
-    if filter_contact:
-
-        has_phone = (
-            displayed_df["Telefono"]
-            .fillna("")
-            .astype(str)
-            .str.strip()
-            .ne("")
+        st.warning(
+            "Nessuna attività trovata. "
+            "Prova a cambiare località, area o categorie."
         )
 
-        has_email = (
-            displayed_df["Email"]
-            .fillna("")
-            .astype(str)
-            .str.strip()
-            .ne("")
+    else:
+
+        metric_col1, metric_col2, metric_col3, metric_col4 = (
+            st.columns(4)
         )
 
-        has_website = (
-            displayed_df["Sito web"]
-            .fillna("")
-            .astype(str)
-            .str.strip()
-            .ne("")
+        total_records = len(df)
+
+        records_with_phone = int(
+            (
+                clean_text_series(
+                    df["Telefono"]
+                )
+                != ""
+            ).sum()
         )
 
-        displayed_df = displayed_df[
-            has_phone | has_email | has_website
-        ]
+        records_with_email = int(
+            (
+                clean_text_series(
+                    df["Email"]
+                )
+                != ""
+            ).sum()
+        )
 
-    st.dataframe(
-        displayed_df,
-        use_container_width=True,
-        hide_index=True,
-    )
+        records_with_website = int(
+            (
+                clean_text_series(
+                    df["Sito web"]
+                )
+                != ""
+            ).sum()
+        )
 
-    safe_location = current_location.replace(" ", "_")
+        metric_col1.metric(
+            "Attività trovate",
+            total_records,
+        )
 
-    filename_base = (
-        f"BusinessFinder_"
-        f"{safe_location}_"
-        f"{current_mode}"
-    )
+        metric_col2.metric(
+            "Con telefono",
+            records_with_phone,
+        )
 
-    excel_data = dataframe_to_excel(displayed_df)
+        metric_col3.metric(
+            "Con email",
+            records_with_email,
+        )
 
-    csv_data = displayed_df.to_csv(
-        index=False,
-        encoding="utf-8-sig",
-    ).encode("utf-8-sig")
+        metric_col4.metric(
+            "Con sito web",
+            records_with_website,
+        )
 
-    json_data = json.dumps(
-        displayed_df.fillna("").to_dict(
-            orient="records"
-        ),
-        ensure_ascii=False,
-        indent=4,
-    ).encode("utf-8")
+        st.divider()
 
-    st.subheader("Download")
+        filter_contact = st.checkbox(
+            "Mostra solo attività con almeno un contatto",
+            value=False,
+        )
 
-    download_col1, download_col2, download_col3 = st.columns(3)
+        displayed_df = df.copy()
 
-    download_col1.download_button(
-        label="📊 Scarica Excel",
-        data=excel_data,
-        file_name=f"{filename_base}.xlsx",
-        mime=(
-            "application/vnd.openxmlformats-"
-            "officedocument.spreadsheetml.sheet"
-        ),
-        use_container_width=True,
-    )
+        if filter_contact:
+            displayed_df = (
+                filter_records_with_contacts(
+                    displayed_df
+                )
+            )
 
-    download_col2.download_button(
-        label="📄 Scarica CSV",
-        data=csv_data,
-        file_name=f"{filename_base}.csv",
-        mime="text/csv",
-        use_container_width=True,
-    )
+        st.caption(
+            f"Righe visualizzate: {len(displayed_df)}"
+        )
 
-    download_col3.download_button(
-        label="📋 Scarica JSON",
-        data=json_data,
-        file_name=f"{filename_base}.json",
-        mime="application/json",
-        use_container_width=True,
-    )
+        st.dataframe(
+            displayed_df,
+            use_container_width=True,
+            hide_index=True,
+            height=520,
+        )
+
+        # Mostra un riepilogo degli avvisi,
+        # senza esporre lunghi errori tecnici.
+        if search_warnings:
+
+            with st.expander(
+                f"Avvisi della ricerca "
+                f"({len(search_warnings)})"
+            ):
+
+                unique_warnings = list(
+                    dict.fromkeys(search_warnings)
+                )
+
+                for warning in unique_warnings:
+                    st.warning(warning)
+
+
+        # ==================================================
+        # DOWNLOAD
+        # ==================================================
+
+        st.divider()
+        st.subheader("Download")
+
+        filename_location = safe_filename(
+            current_location
+        )
+
+        filename_base = (
+            f"BusinessFinder_"
+            f"{filename_location}_"
+            f"{current_mode}"
+        )
+
+        excel_data = dataframe_to_excel(
+            displayed_df
+        )
+
+        csv_data = displayed_df.to_csv(
+            index=False,
+            encoding="utf-8-sig",
+        ).encode("utf-8-sig")
+
+        json_data = json.dumps(
+            displayed_df
+            .fillna("")
+            .to_dict(orient="records"),
+            ensure_ascii=False,
+            indent=4,
+        ).encode("utf-8")
+
+        download_col1, download_col2, download_col3 = (
+            st.columns(3)
+        )
+
+        with download_col1:
+
+            st.download_button(
+                label="📊 Scarica Excel",
+                data=excel_data,
+                file_name=f"{filename_base}.xlsx",
+                mime=(
+                    "application/vnd.openxmlformats-"
+                    "officedocument.spreadsheetml.sheet"
+                ),
+                use_container_width=True,
+            )
+
+        with download_col2:
+
+            st.download_button(
+                label="📄 Scarica CSV",
+                data=csv_data,
+                file_name=f"{filename_base}.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )
+
+        with download_col3:
+
+            st.download_button(
+                label="📋 Scarica JSON",
+                data=json_data,
+                file_name=f"{filename_base}.json",
+                mime="application/json",
+                use_container_width=True,
+            )
