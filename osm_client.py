@@ -1,157 +1,132 @@
 """
 Business Finder Italia
-Client OpenStreetMap tramite Overpass API.
+Client OpenStreetMap (Overpass)
 """
 
 from __future__ import annotations
 
+import random
 import time
-from typing import Any
-
 import requests
 
-from config import OVERPASS_SERVERS, REQUEST_TIMEOUT, RETRY
+from config import (
+    OVERPASS_SERVERS,
+    REQUEST_TIMEOUT,
+    RETRY,
+)
 
 
 class OverpassClient:
-    """Gestisce le ricerche tramite i server Overpass."""
 
-    ADMIN_LEVELS = {
-        "comune": "8",
-        "provincia": "6",
-        "regione": "4",
-    }
+    def __init__(self):
+        self.session = requests.Session()
 
-    def __init__(self) -> None:
-        self.servers = OVERPASS_SERVERS
+        self.session.headers.update(
+            {
+                "User-Agent": "BusinessFinderItalia/3.0"
+            }
+        )
 
-    @staticmethod
-    def _escape(value: str) -> str:
-        """Protegge i caratteri speciali usati nella query."""
-        return value.replace("\\", "\\\\").replace('"', '\\"')
+    def build_query(self, location, mode, key, value):
 
-    def build_query(
-        self,
-        location: str,
-        search_mode: str,
-        key: str,
-        value: str,
-    ) -> str:
-        """Costruisce la query per comune, provincia o regione."""
-
-        mode = search_mode.strip().lower()
-
-        if mode not in self.ADMIN_LEVELS:
-            raise ValueError(
-                "SEARCH_MODE non valido. "
-                "Usa 'comune', 'provincia' oppure 'regione'."
-            )
-
-        admin_level = self.ADMIN_LEVELS[mode]
-
-        safe_location = self._escape(location.strip())
-        safe_key = self._escape(key.strip())
-        safe_value = self._escape(value.strip())
-
-        # La ricerca con espressione regolare permette di trovare anche
-        # denominazioni come "Città metropolitana di Milano".
-        area_pattern = f".*{safe_location}.*"
+        admin = {
+            "comune": "8",
+            "provincia": "6",
+            "regione": "4",
+        }[mode]
 
         return f"""
 [out:json][timeout:{REQUEST_TIMEOUT}];
 
 relation
-  ["boundary"="administrative"]
-  ["admin_level"="{admin_level}"]
-  ["name"~"{area_pattern}", i];
+["boundary"="administrative"]
+["admin_level"="{admin}"]
+["name"="{location}"];
 
-map_to_area -> .searchArea;
+map_to_area->.searchArea;
 
 (
-  node["{safe_key}"="{safe_value}"](area.searchArea);
-  way["{safe_key}"="{safe_value}"](area.searchArea);
-  relation["{safe_key}"="{safe_value}"](area.searchArea);
+node["{key}"="{value}"](area.searchArea);
+way["{key}"="{value}"](area.searchArea);
+relation["{key}"="{value}"](area.searchArea);
 );
 
 out center tags;
 """
 
-    def search(
-        self,
-        location: str,
-        search_mode: str,
-        key: str,
-        value: str,
-    ) -> list[dict[str, Any]]:
-        """Esegue la richiesta e restituisce gli elementi trovati."""
+    def search(self, location, mode, key, value):
 
         query = self.build_query(
-            location=location,
-            search_mode=search_mode,
-            key=key,
-            value=value,
+            location,
+            mode,
+            key,
+            value
         )
 
-        last_error: Exception | None = None
+        servers = OVERPASS_SERVERS.copy()
+        random.shuffle(servers)
 
-        for server in self.servers:
+        last_error = None
 
-            for attempt in range(1, RETRY + 1):
+        for server in servers:
+
+            for attempt in range(RETRY):
 
                 try:
-                    response = requests.post(
+
+                    response = self.session.post(
                         server,
-                        data={"data": query},
+                        data=query.encode("utf-8"),
                         headers={
-                            "User-Agent": (
-                                "BusinessFinderItalia/2.0 "
-                                "(OpenStreetMap business search)"
-                            )
+                            "Content-Type": "text/plain"
                         },
-                        timeout=REQUEST_TIMEOUT,
+                        timeout=REQUEST_TIMEOUT
                     )
 
                     if response.status_code == 429:
-                        wait_seconds = attempt * 10
+
+                        wait = 10 * (attempt + 1)
+
                         print(
-                            f"  Troppe richieste. "
-                            f"Attendo {wait_seconds} secondi..."
+                            f"Troppe richieste. Attendo {wait} secondi..."
                         )
-                        time.sleep(wait_seconds)
+
+                        time.sleep(wait)
+
                         continue
 
-                    if response.status_code in (502, 503, 504):
-                        wait_seconds = attempt * 5
+                    if response.status_code in (
+                        500,
+                        502,
+                        503,
+                        504,
+                    ):
+
+                        wait = 5 * (attempt + 1)
+
                         print(
-                            f"  Server temporaneamente occupato. "
-                            f"Attendo {wait_seconds} secondi..."
+                            f"Server temporaneamente occupato. Attendo {wait} secondi..."
                         )
-                        time.sleep(wait_seconds)
+
+                        time.sleep(wait)
+
                         continue
 
                     response.raise_for_status()
 
                     data = response.json()
 
-                    return data.get("elements", [])
-
-                except (
-                    requests.Timeout,
-                    requests.ConnectionError,
-                    requests.HTTPError,
-                    ValueError,
-                ) as error:
-
-                    last_error = error
-
-                    print(
-                        f"  Tentativo {attempt}/{RETRY} fallito "
-                        f"su {server}"
+                    return data.get(
+                        "elements",
+                        []
                     )
 
-                    time.sleep(attempt * 3)
+                except Exception as e:
+
+                    last_error = e
+
+                    time.sleep(5)
 
         raise RuntimeError(
-            "Nessun server Overpass disponibile. "
-            f"Ultimo errore: {last_error}"
+            f"Nessun server Overpass disponibile.\nUltimo errore: {last_error}"
         )
